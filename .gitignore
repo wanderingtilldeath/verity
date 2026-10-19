@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.env
+data/
+*.bz2
+*.parquet
+checkpoint*.json
+dead_letter*.jsonl
+bench/results/*.json.gz
+bench/results/raw/
+bench/data/

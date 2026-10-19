@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wikisearch-es</title>
+<style>
+  :root { --fg:#1b1f23; --muted:#5b6670; --bg:#fff; --line:#d8dee4; --accent:#0b5fff; --mark:#fff3a3; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg:#e6edf3; --muted:#9aa7b2; --bg:#0d1117; --line:#30363d; --accent:#58a6ff; --mark:#5a4a00; }
+  }
+  body { font:16px/1.5 system-ui, sans-serif; color:var(--fg); background:var(--bg); margin:0; }
+  main { max-width:780px; margin:0 auto; padding:24px 16px 64px; }
+  nav button { font:inherit; padding:6px 14px; border:1px solid var(--line); background:none; color:var(--fg); cursor:pointer; }
+  nav button[aria-pressed="true"] { border-color:var(--accent); color:var(--accent); }
+  input[type=search], textarea { width:100%; box-sizing:border-box; font:inherit; padding:10px; margin-top:12px;
+    border:1px solid var(--line); background:var(--bg); color:var(--fg); }
+  textarea { min-height:160px; }
+  #suggestions { list-style:none; margin:0; padding:0; border:1px solid var(--line); border-top:0; }
+  #suggestions:empty { display:none; }
+  #suggestions li { padding:6px 10px; cursor:pointer; }
+  #suggestions li:hover { background:var(--line); }
+  .hit { margin:18px 0; }
+  .hit a { color:var(--accent); font-size:1.1em; text-decoration:none; }
+  .meta, .hint { color:var(--muted); font-size:.875em; }
+  mark { background:var(--mark); color:inherit; }
+  .snippet { margin:4px 0; }
+  .bar { height:6px; background:var(--line); } .bar i { display:block; height:100%; background:var(--accent); }
+  .err { color:#c62828; }
+  .passage { border-left:3px solid var(--accent); padding-left:10px; margin:8px 0; font-size:.9em; }
+  footer { margin-top:40px; color:var(--muted); font-size:.8em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>wikisearch-es</h1>
+  <nav>
+    <button id="tab-search" aria-pressed="true">Search</button>
+    <button id="tab-plag" aria-pressed="false">Plagiarism check</button>
+  </nav>
+
+  <section id="search-pane">
+    <input id="q" type="search" placeholder="Search articles…" autocomplete="off" autofocus>
+    <ul id="suggestions"></ul>
+    <p id="dym" class="hint"></p>
+    <div id="results"></div>
+    <button id="more" hidden>Load more</button>
+  </section>
+
+  <section id="plag-pane" hidden>
+    <textarea id="plag-text" placeholder="Paste text (at least 8 words, up to 50,000 characters)"></textarea>
+    <p><button id="plag-go">Check</button> <span id="plag-status" class="hint"></span></p>
+    <div id="plag-results"></div>
+  </section>
+
+  <footer>
+    Article text from Wikipedia contributors, licensed
+    <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. Text is cleaned and
+    truncated to the lead section; every result links to its source article.
+  </footer>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => s.replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let cursor = null, lastQuery = '';
+
+function show(tab) {
+  $('search-pane').hidden = tab !== 'search';
+  $('plag-pane').hidden = tab !== 'plag';
+  $('tab-search').setAttribute('aria-pressed', tab === 'search');
+  $('tab-plag').setAttribute('aria-pressed', tab === 'plag');
+}
+$('tab-search').onclick = () => show('search');
+$('tab-plag').onclick = () => show('plag');
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const body = await r.json();
+  if (!r.ok) throw new Error(body.message || r.statusText);
+  return body;
+}
+
+// Snippets come back HTML-escaped by ES (encoder=html) with <mark> tags only, so innerHTML is safe.
+function renderHit(h) {
+  const url = h.url || ('https://en.wikipedia.org/?curid=' + h.id);
+  const title = h.title_highlight || esc(h.title);
+  const snippets = h.snippets.map((s) => `<p class="snippet">${s}</p>`).join('');
+  return `<div class="hit"><a href="${esc(url)}" rel="noopener">${title}</a>
+    <span class="meta">#${h.id} · score ${h.score?.toFixed(2) ?? '–'}</span>${snippets}</div>`;
+}
+
+async function runSearch(more) {
+  const q = $('q').value.trim();
+  if (!q) return;
+  try {
+    const params = new URLSearchParams({ q, size: 10, cursor: more ? cursor : 'start' });
+    const r = await api('/search?' + params);
+    $('results').insertAdjacentHTML(more ? 'beforeend' : 'afterbegin', r.hits.map(renderHit).join(''));
+    if (!more) $('results').insertAdjacentHTML('afterbegin',
+      `<p class="meta">${r.total}${r.total_is_exact ? '' : '+'} results · ${r.took_ms} ms</p>`);
+    cursor = r.next; $('more').hidden = !r.next; lastQuery = q;
+  } catch (e) { $('results').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+}
+
+async function suggest() {
+  const q = $('q').value.trim();
+  if (q.length < 2) { $('suggestions').innerHTML = ''; $('dym').textContent = ''; return; }
+  try {
+    const r = await api('/suggest?q=' + encodeURIComponent(q));
+    $('suggestions').innerHTML = r.completions.map((t) => `<li>${esc(t)}</li>`).join('');
+    $('dym').innerHTML = r.did_you_mean ? `Did you mean <a href="#" id="dym-link">${esc(r.did_you_mean)}</a>?` : '';
+    const link = $('dym-link');
+    if (link) link.onclick = (ev) => { ev.preventDefault(); $('q').value = r.did_you_mean; submit(); };
+  } catch { /* suggestions are best-effort */ }
+}
+
+function submit() { $('suggestions').innerHTML = ''; $('results').innerHTML = ''; runSearch(false); }
+let timer;
+$('q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(suggest, 150); });
+$('q').addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+$('suggestions').addEventListener('click', (e) => { if (e.target.tagName === 'LI') { $('q').value = e.target.textContent; submit(); } });
+$('more').onclick = () => runSearch(true);
+
+// ---- plagiarism: highlight matched input passages -------------------------------------------
+function highlightInput(text, matches) {
+  const spans = matches.flatMap((m) => m.passages.map((p) => [p.input.start, p.input.end]))
+    .sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  for (const [s, e] of spans) {
+    if (merged.length && s <= merged[merged.length - 1][1]) merged[merged.length - 1][1] = Math.max(e, merged[merged.length - 1][1]);
+    else merged.push([s, e]);
+  }
+  let out = '', at = 0;
+  for (const [s, e] of merged) { out += esc(text.slice(at, s)) + '<mark>' + esc(text.slice(s, e)) + '</mark>'; at = e; }
+  return out + esc(text.slice(at));
+}
+
+$('plag-go').onclick = async () => {
+  const text = $('plag-text').value;
+  $('plag-status').textContent = 'Checking…';
+  try {
+    const r = await api('/plagiarism/check', { method: 'POST',
+      headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }) });
+    $('plag-status').textContent = `${r.input_words} words, ${r.input_fingerprints} fingerprints, ${r.candidates} candidates, ${r.took_ms} ms`;
+    if (!r.matches.length) { $('plag-results').innerHTML = '<p>No matches above the threshold.</p>'; return; }
+    $('plag-results').innerHTML =
+      `<div class="passage" style="border:0">${highlightInput(text, r.matches).replace(/\n/g, '<br>')}</div>` +
+      r.matches.map((m) => `<div class="hit"><a href="${esc(m.url || '#')}" rel="noopener">${esc(m.title)}</a>
+        <span class="meta">containment ${(m.containment * 100).toFixed(0)}% · jaccard ${(m.jaccard * 100).toFixed(0)}%</span>
+        <div class="bar"><i style="width:${m.containment * 100}%"></i></div>
+        ${m.passages.slice(0, 3).map((p) => `<div class="passage">${esc(p.source.text)}<br><span class="meta">${p.words} words</span></div>`).join('')}
+      </div>`).join('');
+  } catch (e) { $('plag-status').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+};
+</script>
+</body>
+</html>
