@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -13,11 +14,15 @@ from fastapi import FastAPI, Query, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app import metrics, plagiarism, search
+from app import metrics, plagiarism, reuse, search
 from app.config import Settings, get_settings
 from app.deps import ES, SETTINGS
-from app.errors import install_handlers
+from app.errors import AppError, install_handlers
 from app.schemas import (
+    DedupeRequest,
+    DedupeResponse,
+    DriftRequest,
+    DriftResponse,
     HealthResponse,
     PlagiarismRequest,
     PlagiarismResponse,
@@ -64,7 +69,7 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     configure_logging()
-    app = FastAPI(title="wikisearch-es", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="verity", version="0.1.0", lifespan=lifespan)
     install_handlers(app)
 
     @app.middleware("http")
@@ -130,6 +135,26 @@ def create_app() -> FastAPI:
         body: PlagiarismRequest,
     ):
         return await plagiarism.check(es, s, body.text, body.threshold, body.max_results)
+
+    def _check_size(s: Settings, *texts: str) -> None:
+        if sum(map(len, texts)) > s.reuse_max_chars:
+            raise AppError(
+                413, "TEXT_TOO_LARGE", f"request is limited to {s.reuse_max_chars} characters"
+            )
+
+    @app.post("/reuse/dedupe", response_model=DedupeResponse)
+    async def dedupe_route(s: Annotated[Settings, SETTINGS], body: DedupeRequest):
+        if len(body.documents) > s.reuse_max_docs:
+            raise AppError(413, "TOO_MANY_DOCUMENTS", f"at most {s.reuse_max_docs} documents")
+        _check_size(s, *(d.text for d in body.documents))
+        threshold = s.dedupe_threshold if body.threshold is None else body.threshold
+        return await asyncio.to_thread(reuse.dedupe, body.documents, threshold)
+
+    @app.post("/reuse/drift", response_model=DriftResponse)
+    async def drift_route(s: Annotated[Settings, SETTINGS], body: DriftRequest):
+        _check_size(s, body.text, *(c.text for c in body.approved))
+        threshold = s.drift_threshold if body.threshold is None else body.threshold
+        return await asyncio.to_thread(reuse.drift, body.approved, body.text, threshold)
 
     @app.get("/healthz", response_model=HealthResponse)
     async def healthz(

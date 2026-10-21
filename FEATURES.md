@@ -1,6 +1,6 @@
 # Features & Architecture Ledger
 
-Living ledger of subsystems in this repo (`wikisearch-es`: full-text and plagiarism search on Elasticsearch). Maintained with `/onboard` (seed) and `/ledger-update` (sync). Terms follow `GLOSSARY.md`; decisions are in `docs/adr/`.
+Living ledger of subsystems in this repo (`verity`: full-text and plagiarism search on Elasticsearch). Maintained with `/onboard` (seed) and `/ledger-update` (sync). Terms follow `GLOSSARY.md`; decisions are in `docs/adr/`.
 
 ### HTTP API & Request Lifecycle
 - **Status**: Active

@@ -1,5 +1,5 @@
 [project]
-name = "wikisearch-es"
+name = "verity"
 version = "0.1.0"
 description = "Full-text + plagiarism search on Elasticsearch, with measured relevance and latency"
 requires-python = ">=3.12"

@@ -1,4 +1,4 @@
-# wikisearch-es: Specification
+# verity: Specification
 
 
 ## 1. Context and goals

@@ -222,7 +222,7 @@ async def suggest(es: AsyncElasticsearch, s: Settings, q: str, size: int = 8) ->
             "text": q,
             "dym": {
                 "phrase": {
-                    "field": "title.suggest._2gram",
+                    "field": "title.suggest",
                     "size": 1,
                     "max_errors": 2,
                     "direct_generator": [
@@ -265,7 +265,7 @@ async def related(
                 "min_term_freq": 1,
                 "min_doc_freq": s.related_min_doc_freq,
                 "max_query_terms": 25,
-                "minimum_should_match": "30%",
+                "minimum_should_match": s.related_min_should_match,
             }
         },
         "size": size,
