@@ -21,6 +21,7 @@ async def client(fixture_alias):
         allow_explain=True,
         max_result_window=60,
         related_min_doc_freq=1,
+        related_min_should_match="1",
     )
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         c.app = app
@@ -163,4 +164,4 @@ async def test_stopped_es_gives_503_not_500():
 
 async def test_static_ui_is_served(client):
     r = await client.get("/")
-    assert r.status_code == 200 and "wikisearch-es" in r.text
+    assert r.status_code == 200 and "verity" in r.text

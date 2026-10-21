@@ -82,6 +82,59 @@ class PlagiarismResponse(BaseModel):
     matches: list[PlagiarismMatch]
 
 
+class TextDoc(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1, max_length=200)
+    text: str = Field(min_length=1)
+
+
+class DedupeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    documents: list[TextDoc] = Field(min_length=2)
+    threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class PairScore(BaseModel):
+    a: str
+    b: str
+    jaccard: float
+
+
+class DedupeCluster(BaseModel):
+    canonical: str  # suggested one to keep: the longest member
+    members: list[str]
+    pairs: list[PairScore]
+
+
+class DedupeResponse(BaseModel):
+    documents: int
+    clusters: list[DedupeCluster]
+
+
+class DriftRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    approved: list[TextDoc] = Field(min_length=1)
+    text: str = Field(min_length=1)
+    threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class DriftSection(BaseModel):
+    start: int  # character offsets of the section (paragraph) in `text`
+    end: int
+    status: str  # unchanged | drifted | new
+    clause_id: str | None = None  # best-matching approved clause (not set for "new")
+    containment: float
+    drift: float  # 1 - containment
+    passages: list[PassageMatch] = []  # drifted sections only; offsets are in `text` / the clause
+
+
+class DriftResponse(BaseModel):
+    sections: list[DriftSection]
+
+
 class HealthResponse(BaseModel):
     status: str
     docs: int | None = None
