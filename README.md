@@ -1,6 +1,5 @@
 # verity
 
-[![CI](https://github.com/wanderingtilldeath/verity/actions/workflows/ci.yml/badge.svg)](https://github.com/wanderingtilldeath/verity/actions/workflows/ci.yml)
 ![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
 ![Elasticsearch 8.x](https://img.shields.io/badge/elasticsearch-8.x-005571)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688)
